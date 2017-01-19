@@ -24,16 +24,16 @@ import com.metamx.common.logger.Logger;
 import io.druid.common.utils.JodaUtils;
 import io.druid.query.lookup.namespace.ExtractionNamespaceCacheFactory;
 import io.druid.query.lookup.namespace.JDBCExtractionNamespace;
+import org.postgresql.Driver;
 import org.skife.jdbi.v2.DBI;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.StatementContext;
+import org.skife.jdbi.v2.tweak.ConnectionFactory;
 import org.skife.jdbi.v2.tweak.HandleCallback;
 import org.skife.jdbi.v2.tweak.ResultSetMapper;
 import org.skife.jdbi.v2.util.TimestampMapper;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
+import java.sql.*;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -128,21 +128,36 @@ public class JDBCExtractionNamespaceCacheFactory
     };
   }
 
-  private DBI ensureDBI(String id, JDBCExtractionNamespace namespace)
+  private DBI ensureDBI(String id, final JDBCExtractionNamespace namespace)
   {
+
+    try {
+      Class.forName("org.postgresql.Driver");
+    } catch (ClassNotFoundException e) {
+      LOG.info("Unable to register PostgresDriver");
+    }
+
+    ConnectionFactory connectionFactory = new ConnectionFactory() {
+      @Override
+      public Connection openConnection() throws SQLException {
+        return DriverManager.getConnection(
+                namespace.getConnectorConfig().getConnectURI(),
+                namespace.getConnectorConfig().getUser(),
+                namespace.getConnectorConfig().getPassword()
+        );
+      }
+    };
+
     final String key = id;
     DBI dbi = null;
     if (dbiCache.containsKey(key)) {
       dbi = dbiCache.get(key);
     }
     if (dbi == null) {
-      final DBI newDbi = new DBI(
-          namespace.getConnectorConfig().getConnectURI(),
-          namespace.getConnectorConfig().getUser(),
-          namespace.getConnectorConfig().getPassword()
-      );
+      final DBI newDbi = new DBI(connectionFactory);
       dbiCache.putIfAbsent(key, newDbi);
       dbi = dbiCache.get(key);
+      dbi.open().getConnection();
     }
     return dbi;
   }
