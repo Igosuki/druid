@@ -28,11 +28,14 @@ import io.druid.server.lookup.namespace.cache.CacheScheduler;
 import org.skife.jdbi.v2.DBI;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.StatementContext;
+import org.skife.jdbi.v2.tweak.ConnectionFactory;
 import org.skife.jdbi.v2.tweak.HandleCallback;
 import org.skife.jdbi.v2.tweak.ResultSetMapper;
 import org.skife.jdbi.v2.util.TimestampMapper;
 
 import javax.annotation.Nullable;
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -80,10 +83,12 @@ public final class JDBCExtractionNamespaceCacheFactory
           {
             final String query;
             query = String.format(
-                "SELECT %s, %s FROM %s",
+                "SELECT %s, %s FROM %s WHERE %s IS NOT NULL AND %s IS NOT NULL",
                 keyColumn,
                 valueColumn,
-                table
+                table,
+                keyColumn,
+                valueColumn
             );
             return handle
                 .createQuery(
@@ -134,17 +139,32 @@ public final class JDBCExtractionNamespaceCacheFactory
 
   private DBI ensureDBI(CacheScheduler.EntryImpl<JDBCExtractionNamespace> id, JDBCExtractionNamespace namespace)
   {
+    try
+    {
+      Class.forName("org.postgresql.Driver");
+    }
+    catch (ClassNotFoundException e)
+    {
+      LOG.info("Unable to register PostgresDriver", new Object[0]);
+    }
+    ConnectionFactory connectionFactory = new ConnectionFactory()
+    {
+      public Connection openConnection()
+        throws SQLException
+      {
+        return DriverManager.getConnection(namespace
+          .getConnectorConfig().getConnectURI(), namespace
+          .getConnectorConfig().getUser(), namespace
+          .getConnectorConfig().getPassword());
+      }
+    };
     final CacheScheduler.EntryImpl<JDBCExtractionNamespace> key = id;
     DBI dbi = null;
     if (dbiCache.containsKey(key)) {
       dbi = dbiCache.get(key);
     }
     if (dbi == null) {
-      final DBI newDbi = new DBI(
-          namespace.getConnectorConfig().getConnectURI(),
-          namespace.getConnectorConfig().getUser(),
-          namespace.getConnectorConfig().getPassword()
-      );
+      final DBI newDbi = new DBI(connectionFactory);
       dbiCache.putIfAbsent(key, newDbi);
       dbi = dbiCache.get(key);
     }
