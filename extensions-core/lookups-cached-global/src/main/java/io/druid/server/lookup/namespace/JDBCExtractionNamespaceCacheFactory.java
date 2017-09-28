@@ -83,10 +83,12 @@ public final class JDBCExtractionNamespaceCacheFactory
           {
             final String query;
             query = String.format(
-                "SELECT %s, %s FROM %s",
+                "SELECT %s, %s FROM %s WHERE %s IS NOT NULL AND %s IS NOT NULL",
                 keyColumn,
                 valueColumn,
-                table
+                table,
+                keyColumn,
+                valueColumn
             );
             return handle
                 .createQuery(
