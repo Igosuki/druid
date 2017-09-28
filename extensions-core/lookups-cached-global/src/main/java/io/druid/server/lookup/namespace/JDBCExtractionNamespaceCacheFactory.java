@@ -137,6 +137,14 @@ public final class JDBCExtractionNamespaceCacheFactory
 
   private DBI ensureDBI(CacheScheduler.EntryImpl<JDBCExtractionNamespace> id, JDBCExtractionNamespace namespace)
   {
+    try
+    {
+      Class.forName("org.postgresql.Driver");
+    }
+    catch (ClassNotFoundException e)
+    {
+      LOG.info("Unable to register PostgresDriver", new Object[0]);
+    }
     ConnectionFactory connectionFactory = new ConnectionFactory()
     {
       public Connection openConnection()
